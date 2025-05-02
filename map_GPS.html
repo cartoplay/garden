@@ -75,40 +75,39 @@
 
   function onSuccess(position) {
     const { latitude, longitude, accuracy } = position.coords;
-    positions.push([latitude, longitude]);
-    totalAccuracy += accuracy;
 
-    statusDiv.textContent = `Sample ${positions.length}/${sampleLimit}
-Lat: ${latitude.toFixed(6)} | Lng: ${longitude.toFixed(6)}
-Accuracy: ±${accuracy.toFixed(1)} m`;
-
-    if (positions.length >= sampleLimit) {
-      navigator.geolocation.clearWatch(watchID);
-
-      const [avgLat, avgLng] = averageCoords(positions);
-      const avgAccuracy = totalAccuracy / sampleLimit;
-
-      map.setView([avgLat, avgLng], 17);
-      L.marker([avgLat, avgLng]).addTo(map)
-        .bindPopup(`Averaged Location<br>Accuracy: ±${avgAccuracy.toFixed(1)} m`).openPopup();
-
-      L.circle([avgLat, avgLng], {
-        radius: avgAccuracy,
-        color: 'blue',
-        fillOpacity: 0.2
-      }).addTo(map);
-
-      statusDiv.textContent = `Final:
-Lat: ${avgLat.toFixed(6)} | Lng: ${avgLng.toFixed(6)}
-Avg Accuracy: ±${avgAccuracy.toFixed(1)} m`;
+    // Add to history
+    positionHistory.push([latitude, longitude, accuracy]);
+    if (positionHistory.length > maxSamples) {
+      positionHistory.shift(); // remove oldest
     }
+
+    // Average last few samples
+    const latlngs = positionHistory.map(p => [p[0], p[1]]);
+    const avgAccuracy = positionHistory.reduce((sum, p) => sum + p[2], 0) / positionHistory.length;
+    const [avgLat, avgLng] = averageCoords(latlngs);
+
+    // Update map
+    if (!marker) {
+      marker = L.marker([avgLat, avgLng]).addTo(map);
+      circle = L.circle([avgLat, avgLng], { radius: avgAccuracy, color: 'blue', fillOpacity: 0.2 }).addTo(map);
+      map.setView([avgLat, avgLng], 17);
+    } else {
+      marker.setLatLng([avgLat, avgLng]);
+      circle.setLatLng([avgLat, avgLng]);
+      circle.setRadius(avgAccuracy);
+    }
+
+    statusDiv.textContent = `Lat: ${avgLat.toFixed(6)} | Lng: ${avgLng.toFixed(6)}
+Avg Accuracy: ±${avgAccuracy.toFixed(1)} m`;
   }
 
   function onError(error) {
     statusDiv.textContent = `GPS Error: ${error.message}`;
   }
 
-  const watchID = navigator.geolocation.watchPosition(onSuccess, onError, {
+  // Continuous watch
+  navigator.geolocation.watchPosition(onSuccess, onError, {
     enableHighAccuracy: true,
     timeout: 10000,
     maximumAge: 0
