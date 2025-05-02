@@ -76,21 +76,34 @@
   function onSuccess(position) {
     const { latitude, longitude, accuracy } = position.coords;
 
-    // Add to history
+    // Store and trim position history
     positionHistory.push([latitude, longitude, accuracy]);
     if (positionHistory.length > maxSamples) {
-      positionHistory.shift(); // remove oldest
+      positionHistory.shift();
     }
 
-    // Average last few samples
+    // Show raw point as dim gray circle
+    L.circle([latitude, longitude], {
+      radius: accuracy,
+      color: '#888',
+      weight: 1,
+      fillOpacity: 0.1,
+      interactive: false
+    }).addTo(map);
+
+    // Calculate averaged location
     const latlngs = positionHistory.map(p => [p[0], p[1]]);
     const avgAccuracy = positionHistory.reduce((sum, p) => sum + p[2], 0) / positionHistory.length;
     const [avgLat, avgLng] = averageCoords(latlngs);
 
-    // Update map
+    // Display/update averaged location
     if (!marker) {
       marker = L.marker([avgLat, avgLng]).addTo(map);
-      circle = L.circle([avgLat, avgLng], { radius: avgAccuracy, color: 'blue', fillOpacity: 0.2 }).addTo(map);
+      circle = L.circle([avgLat, avgLng], {
+        radius: avgAccuracy,
+        color: 'blue',
+        fillOpacity: 0.2
+      }).addTo(map);
       map.setView([avgLat, avgLng], 17);
     } else {
       marker.setLatLng([avgLat, avgLng]);
@@ -98,20 +111,30 @@
       circle.setRadius(avgAccuracy);
     }
 
-    statusDiv.textContent = `Lat: ${avgLat.toFixed(6)} | Lng: ${avgLng.toFixed(6)}
-Avg Accuracy: ±${avgAccuracy.toFixed(1)} m`;
+    statusDiv.textContent =
+      `Lat: ${avgLat.toFixed(6)} | Lng: ${avgLng.toFixed(6)}\n` +
+      `Avg Accuracy: ±${avgAccuracy.toFixed(1)} m\n` +
+      `Raw: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${accuracy.toFixed(1)} m)`;
   }
 
   function onError(error) {
     statusDiv.textContent = `GPS Error: ${error.message}`;
   }
 
-  // Continuous watch
+  navigator.geolocation.getCurrentPosition((pos) => {
+  // Got first fix — now watch
+  onSuccess(pos);
   navigator.geolocation.watchPosition(onSuccess, onError, {
     enableHighAccuracy: true,
     timeout: 10000,
     maximumAge: 0
   });
+}, onError, {
+  enableHighAccuracy: true,
+  timeout: 15000,
+  maximumAge: 0
+});
+
   </script>
 </body>
 </html>
