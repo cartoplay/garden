@@ -1,0 +1,118 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Leaflet Preview</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""/>
+ <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+
+  <style type="text/css">
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #status {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 6px 12px;
+      font-family: sans-serif;
+      font-size: 14px;
+      border-radius: 6px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="status">Waiting for GPS...</div>
+  <script src="./data/features.js"></script>
+  
+  <script>
+      var map = L.map('map').setView([35.9852991945, -78.991210549], 21.0);
+      const statusDiv = document.getElementById('status');
+      const sampleLimit = 5;
+      let positions = [];
+      let totalAccuracy = 0;
+
+      
+      L.tileLayer('./tiles/{z}/{x}/{y}.png', {
+        minZoom: 19,
+        maxZoom: 23,
+        tms: false,
+      }).addTo(map);
+      
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19
+  }).addTo(map);
+
+      var myStyle = {
+          "color": "#ff7800",
+          "weight": 5,
+          "opacity": 0.65
+      };
+
+      L.geoJSON(data, {
+          style: myStyle
+      }).addTo(map);
+
+      function averageCoords(coordsArray) {
+    const avgLat = coordsArray.reduce((sum, c) => sum + c[0], 0) / coordsArray.length;
+    const avgLng = coordsArray.reduce((sum, c) => sum + c[1], 0) / coordsArray.length;
+    return [avgLat, avgLng];
+  }
+
+  function onSuccess(position) {
+    const { latitude, longitude, accuracy } = position.coords;
+    positions.push([latitude, longitude]);
+    totalAccuracy += accuracy;
+
+    statusDiv.textContent = `Sample ${positions.length}/${sampleLimit}
+Lat: ${latitude.toFixed(6)} | Lng: ${longitude.toFixed(6)}
+Accuracy: ±${accuracy.toFixed(1)} m`;
+
+    if (positions.length >= sampleLimit) {
+      navigator.geolocation.clearWatch(watchID);
+
+      const [avgLat, avgLng] = averageCoords(positions);
+      const avgAccuracy = totalAccuracy / sampleLimit;
+
+      map.setView([avgLat, avgLng], 17);
+      L.marker([avgLat, avgLng]).addTo(map)
+        .bindPopup(`Averaged Location<br>Accuracy: ±${avgAccuracy.toFixed(1)} m`).openPopup();
+
+      L.circle([avgLat, avgLng], {
+        radius: avgAccuracy,
+        color: 'blue',
+        fillOpacity: 0.2
+      }).addTo(map);
+
+      statusDiv.textContent = `Final:
+Lat: ${avgLat.toFixed(6)} | Lng: ${avgLng.toFixed(6)}
+Avg Accuracy: ±${avgAccuracy.toFixed(1)} m`;
+    }
+  }
+
+  function onError(error) {
+    statusDiv.textContent = `GPS Error: ${error.message}`;
+  }
+
+  const watchID = navigator.geolocation.watchPosition(onSuccess, onError, {
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 0
+  });
+  </script>
+</body>
+</html>
