@@ -41,10 +41,11 @@
   
   <script>
       var map = L.map('map').setView([35.9852991945, -78.991210549], 21.0);
-      const statusDiv = document.getElementById('status');
-      const sampleLimit = 5;
-      let positions = [];
-      let totalAccuracy = 0;
+    const statusDiv = document.getElementById('status');
+    const maxSamples = 5;
+    const positionHistory = [];
+
+    let marker, circle;
 
       
       L.tileLayer('./tiles/{z}/{x}/{y}.png', {
@@ -66,23 +67,26 @@
       L.geoJSON(data, {
           style: myStyle
       }).addTo(map);
+  
 
-      function averageCoords(coordsArray) {
+ 
+
+  function averageCoords(coordsArray) {
     const avgLat = coordsArray.reduce((sum, c) => sum + c[0], 0) / coordsArray.length;
     const avgLng = coordsArray.reduce((sum, c) => sum + c[1], 0) / coordsArray.length;
     return [avgLat, avgLng];
   }
 
-  function onSuccess(position) {
-    const { latitude, longitude, accuracy } = position.coords;
-
-    // Store and trim position history
+  function updateMap(latitude, longitude, accuracy) {
+    // Save and trim history
     positionHistory.push([latitude, longitude, accuracy]);
-    if (positionHistory.length > maxSamples) {
-      positionHistory.shift();
-    }
+    if (positionHistory.length > maxSamples) positionHistory.shift();
 
-    // Show raw point as dim gray circle
+    const latlngs = positionHistory.map(p => [p[0], p[1]]);
+    const [avgLat, avgLng] = averageCoords(latlngs);
+    const avgAccuracy = positionHistory.reduce((sum, p) => sum + p[2], 0) / positionHistory.length;
+
+    // Dim raw reading
     L.circle([latitude, longitude], {
       radius: accuracy,
       color: '#888',
@@ -91,12 +95,7 @@
       interactive: false
     }).addTo(map);
 
-    // Calculate averaged location
-    const latlngs = positionHistory.map(p => [p[0], p[1]]);
-    const avgAccuracy = positionHistory.reduce((sum, p) => sum + p[2], 0) / positionHistory.length;
-    const [avgLat, avgLng] = averageCoords(latlngs);
-
-    // Display/update averaged location
+    // Averaged marker + circle
     if (!marker) {
       marker = L.marker([avgLat, avgLng]).addTo(map);
       circle = L.circle([avgLat, avgLng], {
@@ -111,29 +110,36 @@
       circle.setRadius(avgAccuracy);
     }
 
-    statusDiv.textContent =
-      `Lat: ${avgLat.toFixed(6)} | Lng: ${avgLng.toFixed(6)}\n` +
-      `Avg Accuracy: ±${avgAccuracy.toFixed(1)} m\n` +
-      `Raw: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${accuracy.toFixed(1)} m)`;
+    statusDiv.textContent = `Lat: ${avgLat.toFixed(6)} | Lng: ${avgLng.toFixed(6)}\n` +
+                            `Avg Accuracy: ±${avgAccuracy.toFixed(1)} m\n` +
+                            `Raw: ${latitude.toFixed(6)}, ${longitude.toFixed(6)} (±${accuracy.toFixed(1)} m)`;
   }
 
-  function onError(error) {
-    statusDiv.textContent = `GPS Error: ${error.message}`;
+  function handleSuccess(pos) {
+    const { latitude, longitude, accuracy } = pos.coords;
+    updateMap(latitude, longitude, accuracy);
   }
 
+  function handleError(err) {
+    statusDiv.textContent = `GPS Error: ${err.message}`;
+  }
+
+  // Step 1: Initial Fix
   navigator.geolocation.getCurrentPosition((pos) => {
-  // Got first fix — now watch
-  onSuccess(pos);
-  navigator.geolocation.watchPosition(onSuccess, onError, {
+    handleSuccess(pos);
+
+    // Step 2: Start watch after first successful fix
+    navigator.geolocation.watchPosition(handleSuccess, handleError, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    });
+
+  }, handleError, {
     enableHighAccuracy: true,
-    timeout: 10000,
+    timeout: 15000,
     maximumAge: 0
   });
-}, onError, {
-  enableHighAccuracy: true,
-  timeout: 15000,
-  maximumAge: 0
-});
 
   </script>
 </body>
